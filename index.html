@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>FlexiTask AI — מנהל משימות וזמן חכם</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; -webkit-text-size-adjust: 100%; }
+    .chat-bubble-user { background: #3b82f6; color: #fff; border-radius: 18px 18px 4px 18px; }
+    .chat-bubble-ai   { background: #1e293b; color: #e2e8f0; border-radius: 18px 18px 18px 4px; }
+    .scrollbar-thin::-webkit-scrollbar { width: 5px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #475569; border-radius: 9px; }
+    .task-done { text-decoration: line-through; color: #64748b; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 1s linear infinite; }
+    .badge-hard    { background:#ef4444; }
+    .badge-ongoing { background:#8b5cf6; }
+    .badge-gcal    { background:#16a34a; }
+    .days-badge    { background:#0ea5e9; }
+
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+    .safe-top    { padding-top: env(safe-area-inset-top, 0px); }
+
+    @media (max-width: 767px) {
+      #chatPanel {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100% !important;
+        z-index: 40;
+        border: none !important;
+      }
+      #mainLayout { height: calc(100vh - 57px); }
+    }
+    @media (min-width: 768px) {
+      #mainLayout { height: calc(100vh - 57px); }
+    }
+
+    button, input, select, textarea { touch-action: manipulation; }
+
+    /* gcal status pill */
+    #gcalStatus { transition: all .3s; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<!-- ===== TOP NAV ===== -->
+<header class="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between sticky top-0 z-50 safe-top">
+  <div class="flex items-center gap-2 min-w-0">
+    <span class="text-xl shrink-0">⚡</span>
+    <div class="min-w-0">
+      <h1 class="text-sm font-bold leading-none truncate">FlexiTask AI</h1>
+      <p class="text-xs text-gray-400 truncate hidden sm:block">מנהל משימות וזמן חכם</p>
+    </div>
+  </div>
+  <div class="flex gap-2 shrink-0 items-center">
+    <span id="gcalStatus" class="hidden text-xs px-2 py-1 rounded-full bg-green-900 text-green-300 border border-green-700">📅 גוגל מחובר</span>
+    <button onclick="openSettings()" class="bg-gray-800 active:bg-gray-700 text-sm px-3 py-2 rounded-lg transition select-none">⚙️</button>
+    <button onclick="toggleChat()" id="chatToggleBtn" class="bg-blue-600 active:bg-blue-500 text-sm px-3 py-2 rounded-lg transition select-none">💬 AI</button>
+  </div>
+</header>
+
+<!-- ===== MAIN LAYOUT ===== -->
+<div class="flex" id="mainLayout">
+
+  <!-- MAIN CONTENT -->
+  <main class="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-thin" id="mainContent">
+
+    <!-- SUMMARY CARDS -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="summaryCards"></div>
+
+    <!-- UNAVAILABILITY SECTION -->
+    <section class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="font-bold text-sm flex items-center gap-2">🚫 תקופות חוסר זמינות</h2>
+        <button onclick="openGCalSync()" id="gcalSyncBtn"
+          class="hidden text-xs bg-green-800 hover:bg-green-700 active:bg-green-600 px-3 py-1.5 rounded-lg transition select-none border border-green-700">
+          📅 סנכרן מגוגל
+        </button>
+      </div>
+      <p class="text-xs text-gray-500 mb-3">חופשות, עומס, מילואים — ימים שלא יחושבו בזמן הפנוי</p>
+
+      <!-- Manual add -->
+      <div class="flex gap-2 flex-wrap items-end">
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">מתאריך</label>
+          <input type="date" id="miluimStart" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">עד תאריך</label>
+          <input type="date" id="miluimEnd" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">תיאור (אופציונלי)</label>
+          <input type="text" id="miluimLabel" placeholder="מילואים / חופשה..." class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+        </div>
+        <button onclick="addMiluimPeriod()" class="bg-orange-600 active:bg-orange-500 px-4 py-2 rounded-lg text-sm transition select-none">+ הוסף</button>
+      </div>
+      <div id="miluimList" class="mt-3 space-y-2"></div>
+    </section>
+
+    <!-- PROJECTS SECTION -->
+    <section class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-sm flex items-center gap-2">📁 פרויקטים / קטגוריות</h2>
+        <button onclick="openAddCourse()" class="bg-blue-600 active:bg-blue-500 px-3 py-2 rounded-lg text-sm transition select-none">+ הוסף</button>
+      </div>
+      <div id="courseList" class="space-y-3"></div>
+    </section>
+
+  </main>
+
+  <!-- CHAT PANEL -->
+  <aside id="chatPanel" class="hidden w-full md:w-[360px] border-r border-gray-800 bg-gray-900 flex-col" style="display:none;">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">🤖</span>
+        <div>
+          <p class="font-semibold text-sm leading-none">מאמן הפרודוקטיביות שלך</p>
+          <p class="text-xs text-green-400">Gemini 1.5 Pro</p>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="clearChat()" class="text-xs text-gray-500 hover:text-gray-300 transition">נקה</button>
+        <button onclick="toggleChat()" class="text-xs text-gray-500 hover:text-gray-300 transition md:hidden px-2 py-1 bg-gray-800 rounded-lg">✕ סגור</button>
+      </div>
+    </div>
+    <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin" style="flex:1;overflow-y:auto;"></div>
+    <div class="px-4 pt-2">
+      <button onclick="sendDailySummary()" class="w-full bg-indigo-700 active:bg-indigo-600 text-sm py-2.5 rounded-lg transition font-medium select-none">📊 סיכום יום + תחקור</button>
+    </div>
+    <div class="p-3 border-t border-gray-800 flex gap-2 safe-bottom">
+      <input id="chatInput" type="text" placeholder="שאל את המאמן שלך..." dir="rtl"
+        class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+        onkeydown="if(event.key==='Enter')sendChat()" />
+      <button onclick="sendChat()" id="sendBtn"
+        class="bg-blue-600 active:bg-blue-500 px-4 py-2.5 rounded-lg transition text-sm select-none">שלח</button>
+    </div>
+  </aside>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- SETTINGS MODAL -->
+<div id="settingsModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+  <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+    <h3 class="font-bold text-lg mb-4">⚙️ הגדרות</h3>
+
+    <!-- Gemini -->
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Gemini AI</p>
+    <label class="text-xs text-gray-400 block mb-1">API Key</label>
+    <input id="apiKeyInput" type="password" placeholder="AIza..." dir="ltr"
+      class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-1 focus:outline-none focus:border-blue-500" />
+    <p class="text-xs text-gray-500 mb-4">המפתח נשמר רק בדפדפן שלך (LocalStorage)</p>
+
+    <!-- Divider -->
+    <div class="border-t border-gray-800 my-4"></div>
+
+    <!-- Google Calendar -->
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Google Calendar</p>
+    <label class="text-xs text-gray-400 block mb-1">Client ID</label>
+    <input id="gcalClientIdInput" type="text" placeholder="xxxx.apps.googleusercontent.com" dir="ltr"
+      class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-1 focus:outline-none focus:border-green-500" />
+    <p class="text-xs text-gray-500 mb-3">מ-Google Cloud Console → OAuth 2.0 Client IDs</p>
+
+    <label class="text-xs text-gray-400 block mb-1">מילות מפתח לסינון אירועים</label>
+    <input id="gcalKeywordsInput" type="text" placeholder="מילואים, חופש, vacation, busy..." dir="rtl"
+      class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-1 focus:outline-none focus:border-green-500" />
+    <p class="text-xs text-gray-500 mb-3">מופרדות בפסיקים — אירועים עם מילים אלו יתווספו כחוסר זמינות</p>
+
+    <label class="text-xs text-gray-400 block mb-1">טווח חיפוש קדימה (חודשים)</label>
+    <select id="gcalMonthsInput" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-4 focus:outline-none focus:border-green-500">
+      <option value="1">חודש 1</option>
+      <option value="3" selected>3 חודשים</option>
+      <option value="6">6 חודשים</option>
+      <option value="12">שנה</option>
+    </select>
+
+    <div id="gcalAuthStatus" class="hidden mb-3 text-xs px-3 py-2 rounded-lg bg-green-900/50 border border-green-700 text-green-300"></div>
+
+    <button onclick="connectGoogle()" id="gcalConnectBtn"
+      class="w-full bg-green-700 hover:bg-green-600 active:bg-green-500 py-2.5 rounded-lg text-sm transition mb-2 font-medium">
+      🔗 התחבר לחשבון גוגל
+    </button>
+    <button onclick="disconnectGoogle()" id="gcalDisconnectBtn"
+      class="hidden w-full bg-gray-700 hover:bg-gray-600 active:bg-gray-500 py-2.5 rounded-lg text-sm transition mb-3">
+      🔌 נתק חשבון גוגל
+    </button>
+
+    <div class="border-t border-gray-800 my-3"></div>
+    <div class="flex gap-2">
+      <button onclick="saveSettings()" class="flex-1 bg-blue-600 active:bg-blue-500 py-2.5 rounded-lg text-sm transition">שמור</button>
+      <button onclick="closeSettings()" class="flex-1 bg-gray-700 active:bg-gray-600 py-2.5 rounded-lg text-sm transition">סגור</button>
+    </div>
+  </div>
+</div>
+
+<!-- GCAL SYNC MODAL -->
+<div id="gcalSyncModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+  <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-700 shadow-2xl">
+    <h3 class="font-bold text-lg mb-1">📅 סנכרון Google Calendar</h3>
+    <p class="text-xs text-gray-400 mb-4">אירועים שיימצאו יתווספו לרשימת חוסר הזמינות</p>
+
+    <div id="gcalSyncResult" class="hidden mb-4 text-sm bg-gray-800 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1"></div>
+
+    <div class="flex gap-2">
+      <button onclick="runCalendarSync()" id="gcalRunBtn"
+        class="flex-1 bg-green-700 hover:bg-green-600 active:bg-green-500 py-2.5 rounded-lg text-sm transition font-medium">
+        🔄 משוך אירועים
+      </button>
+      <button onclick="closeGCalSync()" class="flex-1 bg-gray-700 active:bg-gray-600 py-2.5 rounded-lg text-sm transition">סגור</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD PROJECT MODAL -->
+<div id="addCourseModal" class="hidden fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-50">
+  <div class="bg-gray-900 rounded-t-2xl md:rounded-2xl p-5 w-full max-w-md border border-gray-700 shadow-2xl safe-bottom">
+    <h3 class="font-bold text-lg mb-4">📁 הוסף פרויקט / קטגוריה</h3>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-gray-400 block mb-1">שם הפרויקט</label>
+        <input id="courseNameInput" type="text" placeholder="למשל: בניית אתר, הכנה לפגישה..."
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500" />
+      </div>
+      <div class="flex gap-3">
+        <div class="flex-1">
+          <label class="text-xs text-gray-400 block mb-1">סוג</label>
+          <select id="courseTypeInput" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+            <option value="hard">תאריך יעד קשיח</option>
+            <option value="ongoing">משימה מתמשכת</option>
+          </select>
+        </div>
+        <div class="flex-1">
+          <label class="text-xs text-gray-400 block mb-1">תאריך יעד</label>
+          <input id="courseDateInput" type="date"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500" />
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 block mb-1">משימות (שורה לכל משימה)</label>
+        <textarea id="courseTasksInput" rows="4" placeholder="משימה ראשונה&#10;משימה שנייה&#10;..."
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none"></textarea>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-4">
+      <button onclick="saveCourse()" class="flex-1 bg-blue-600 active:bg-blue-500 py-2.5 rounded-lg text-sm transition">שמור</button>
+      <button onclick="closeAddCourse()" class="flex-1 bg-gray-700 active:bg-gray-600 py-2.5 rounded-lg text-sm transition">ביטול</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SCRIPT ===== -->
+<script>
+// ─── STATE ───────────────────────────────────────────────
+let state = {
+  courses: [],
+  miluim: [],
+  apiKey: '',
+  gcalClientId: '',
+  gcalKeywords: 'מילואים,חופש,vacation,busy',
+  gcalMonths: 3,
+  chatHistory: []
+};
+
+const SYSTEM_INSTRUCTION = `אתה מאמן פרודוקטיביות וניהול זמן אישי, חד וממוקד. תפקידך הוא לעזור למשתמש לנהל את המשימות והפרויקטים שלו בצורה אופטימלית, תוך התחשבות קשוחה בימי חוסר הזמינות שהוא מזין (כמו חופשות, מילואים או אילוצי עבודה). בכל פנייה, נתח את הנתונים העדכניים שלו שמועברים ברקע, שקף לו את מצבו האמיתי בגרפים ובמשימות, ועזור לו לפרק יעדים גדולים לתתי-משימות ריאליות. היה תומך אך אסרטיבי לגבי עמידה בזמנים. אל תענה על שאלות כלליות שאינן קשורות לניהול המשימות והזמן שלו. ענה בעברית.`;
+
+// ─── PERSISTENCE ─────────────────────────────────────────
+function load() {
+  try {
+    const s = localStorage.getItem('miluim_study_state');
+    if (s) state = { ...state, ...JSON.parse(s) };
+  } catch(e) {}
+}
+function save() {
+  localStorage.setItem('miluim_study_state', JSON.stringify(state));
+}
+
+// ─── DATE HELPERS ─────────────────────────────────────────
+function daysBetween(a, b) {
+  return Math.max(0, Math.round((new Date(b) - new Date(a)) / 86400000));
+}
+function countUnavailableDays() {
+  return state.miluim.reduce((t,p) => t + daysBetween(p.start, p.end) + 1, 0);
+}
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  return daysBetween(new Date().toISOString().slice(0,10), dateStr);
+}
+function netWorkDays(dueDate) {
+  const total = daysUntil(dueDate);
+  if (total === null) return null;
+  const today = new Date().toISOString().slice(0,10);
+  let overlap = 0;
+  for (const p of state.miluim) {
+    const s = p.start > today ? p.start : today;
+    const e = p.end   < dueDate ? p.end : dueDate;
+    if (s <= e) overlap += daysBetween(s, e) + 1;
+  }
+  return Math.max(0, total - overlap);
+}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function toDateStr(d) { return new Date(d).toISOString().slice(0,10); }
+
+// ─── RENDER ───────────────────────────────────────────────
+function renderSummary() {
+  const tp = state.courses.length;
+  const tt = state.courses.reduce((a,c)=>a+c.tasks.length,0);
+  const dt = state.courses.reduce((a,c)=>a+c.tasks.filter(t=>t.done).length,0);
+  const ud = countUnavailableDays();
+  const pct = tt ? Math.round(dt/tt*100) : 0;
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+      <p class="text-2xl font-bold text-blue-400">${tp}</p>
+      <p class="text-xs text-gray-400 mt-1">פרויקטים</p>
+    </div>
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+      <p class="text-2xl font-bold text-green-400">${pct}%</p>
+      <p class="text-xs text-gray-400 mt-1">הושלמו</p>
+    </div>
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+      <p class="text-2xl font-bold text-orange-400">${ud}</p>
+      <p class="text-xs text-gray-400 mt-1">ימי חוסר זמינות</p>
+    </div>
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+      <p class="text-2xl font-bold text-purple-400">${dt}/${tt}</p>
+      <p class="text-xs text-gray-400 mt-1">משימות</p>
+    </div>`;
+}
+
+function renderMiluim() {
+  const el = document.getElementById('miluimList');
+  if (!state.miluim.length) {
+    el.innerHTML = '<p class="text-xs text-gray-500">לא הוזנו תקופות חוסר זמינות</p>';
+    return;
+  }
+  el.innerHTML = state.miluim.map(p => {
+    const days = daysBetween(p.start, p.end) + 1;
+    const fromGcal = p.fromGcal ? `<span class="badge-gcal text-white text-xs px-1.5 py-0.5 rounded-full">📅</span>` : '';
+    return `<div class="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2 text-sm gap-2">
+      <div class="flex flex-col min-w-0">
+        <div class="flex items-center gap-1.5">
+          ${fromGcal}
+          ${p.label ? `<span class="text-gray-200 text-xs font-medium">${escHtml(p.label)}</span>` : ''}
+        </div>
+        <span class="text-orange-300 font-medium text-xs">${p.start} → ${p.end}</span>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <span class="text-xs text-gray-400">${days} ימים</span>
+        <button onclick="removeMiluim('${p.id}')" class="text-gray-500 active:text-red-400 text-xs p-1">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderCourses() {
+  const el = document.getElementById('courseList');
+  if (!state.courses.length) {
+    el.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">אין פרויקטים עדיין — לחץ "הוסף" להתחיל</p>';
+    return;
+  }
+  const sorted = [...state.courses].sort((a,b)=>(a.dueDate||'zzzzz').localeCompare(b.dueDate||'zzzzz'));
+  el.innerHTML = sorted.map(c => {
+    const net   = netWorkDays(c.dueDate);
+    const until = daysUntil(c.dueDate);
+    const done  = c.tasks.filter(t=>t.done).length;
+    const total = c.tasks.length;
+    const pct   = total ? Math.round(done/total*100) : 0;
+    const urgentClass = until !== null && until <= 3 ? 'border-red-500/50' : until !== null && until <= 7 ? 'border-yellow-500/40' : 'border-gray-700';
+    const badge = c.type === 'hard'
+      ? `<span class="badge-hard text-xs px-2 py-0.5 rounded-full text-white">יעד קשיח</span>`
+      : `<span class="badge-ongoing text-xs px-2 py-0.5 rounded-full text-white">מתמשך</span>`;
+    const tasksHtml = c.tasks.map(t => `
+      <label class="flex items-start gap-2 cursor-pointer group py-0.5">
+        <input type="checkbox" ${t.done?'checked':''} onchange="toggleTask('${c.id}','${t.id}')"
+          class="w-4 h-4 rounded accent-blue-500 cursor-pointer mt-0.5 shrink-0" />
+        <span class="text-sm ${t.done?'task-done':''} group-hover:text-white transition leading-snug">${escHtml(t.text)}</span>
+      </label>`).join('');
+    return `
+      <div class="bg-gray-800/60 border ${urgentClass} rounded-xl p-4">
+        <div class="flex items-start justify-between mb-2 gap-2">
+          <div class="flex items-center gap-2 flex-wrap min-w-0">
+            ${badge}
+            <h3 class="font-semibold text-sm">${escHtml(c.name)}</h3>
+            ${until !== null ? `<span class="text-xs ${until<=3?'text-red-400':until<=7?'text-yellow-400':'text-gray-400'}">${until<0?'⚠️ עבר!':until===0?'היום!':until+' ימים'}</span>` : ''}
+          </div>
+          <button onclick="removeCourse('${c.id}')" class="text-gray-600 active:text-red-400 text-xs shrink-0 p-1">✕</button>
+        </div>
+        <div class="flex gap-3 text-xs text-gray-400 mb-3 flex-wrap">
+          ${c.dueDate ? `<span>📅 ${c.dueDate}</span>` : ''}
+          ${net !== null ? `<span class="days-badge text-white px-2 py-0.5 rounded-full">🎯 ${net} ימי עבודה נטו</span>` : ''}
+          ${total ? `<span>${done}/${total} משימות</span>` : ''}
+        </div>
+        ${total ? `<div class="w-full bg-gray-700 rounded-full h-1.5 mb-3"><div class="bg-blue-500 h-1.5 rounded-full transition-all" style="width:${pct}%"></div></div>` : ''}
+        <div class="space-y-1">
+          ${tasksHtml}
+          <div class="flex gap-2 mt-2">
+            <input type="text" id="newTask_${c.id}" placeholder="הוסף משימה..." dir="rtl"
+              class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-500 min-w-0"
+              onkeydown="if(event.key==='Enter')addTask('${c.id}')" />
+            <button onclick="addTask('${c.id}')" class="text-xs bg-gray-700 active:bg-gray-600 px-3 py-2 rounded-lg shrink-0">+</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderAll() { renderSummary(); renderMiluim(); renderCourses(); }
+
+// ─── UNAVAILABILITY ACTIONS ───────────────────────────────
+function addMiluimPeriod() {
+  const start = document.getElementById('miluimStart').value;
+  const end   = document.getElementById('miluimEnd').value;
+  const label = document.getElementById('miluimLabel').value.trim();
+  if (!start || !end || start > end) return alert('נא לבחור תאריך התחלה וסיום תקין');
+  state.miluim.push({ id:uid(), start, end, label, fromGcal:false });
+  save(); renderAll();
+  ['miluimStart','miluimEnd','miluimLabel'].forEach(id=>document.getElementById(id).value='');
+}
+function removeMiluim(id) {
+  state.miluim = state.miluim.filter(p=>p.id!==id);
+  save(); renderAll();
+}
+
+// ─── PROJECT ACTIONS ──────────────────────────────────────
+function openAddCourse()  { document.getElementById('addCourseModal').classList.remove('hidden'); }
+function closeAddCourse() { document.getElementById('addCourseModal').classList.add('hidden'); }
+function saveCourse() {
+  const name = document.getElementById('courseNameInput').value.trim();
+  if (!name) return alert('נא להזין שם פרויקט');
+  const type    = document.getElementById('courseTypeInput').value;
+  const dueDate = document.getElementById('courseDateInput').value;
+  const raw     = document.getElementById('courseTasksInput').value;
+  const tasks   = raw.split('\n').map(t=>t.trim()).filter(Boolean).map(t=>({id:uid(),text:t,done:false}));
+  state.courses.push({ id:uid(), name, type, dueDate, tasks });
+  save(); renderAll(); closeAddCourse();
+  ['courseNameInput','courseTasksInput','courseDateInput'].forEach(id=>document.getElementById(id).value='');
+}
+function removeCourse(id) {
+  if (!confirm('למחוק את הפרויקט?')) return;
+  state.courses = state.courses.filter(c=>c.id!==id);
+  save(); renderAll();
+}
+function toggleTask(courseId, taskId) {
+  const c = state.courses.find(c=>c.id===courseId);
+  if (!c) return;
+  const t = c.tasks.find(t=>t.id===taskId);
+  if (t) t.done = !t.done;
+  save(); renderAll();
+}
+function addTask(courseId) {
+  const input = document.getElementById('newTask_'+courseId);
+  const text  = input.value.trim();
+  if (!text) return;
+  const c = state.courses.find(c=>c.id===courseId);
+  if (!c) return;
+  c.tasks.push({ id:uid(), text, done:false });
+  save(); renderAll();
+}
+
+// ─── SETTINGS ─────────────────────────────────────────────
+function openSettings() {
+  document.getElementById('apiKeyInput').value        = state.apiKey || '';
+  document.getElementById('gcalClientIdInput').value  = state.gcalClientId || '';
+  document.getElementById('gcalKeywordsInput').value  = state.gcalKeywords || '';
+  document.getElementById('gcalMonthsInput').value    = state.gcalMonths || 3;
+  updateGcalAuthUI();
+  document.getElementById('settingsModal').classList.remove('hidden');
+}
+function closeSettings() { document.getElementById('settingsModal').classList.add('hidden'); }
+function saveSettings() {
+  state.apiKey       = document.getElementById('apiKeyInput').value.trim();
+  state.gcalClientId = document.getElementById('gcalClientIdInput').value.trim();
+  state.gcalKeywords = document.getElementById('gcalKeywordsInput').value.trim();
+  state.gcalMonths   = parseInt(document.getElementById('gcalMonthsInput').value) || 3;
+  save(); closeSettings();
+  showToast('✅ הגדרות נשמרו');
+}
+
+// ─── GOOGLE CALENDAR INTEGRATION ─────────────────────────
+let gcalTokenClient = null;
+let gcalAccessToken = null;
+let gapiReady       = false;
+let gisReady        = false;
+
+// Load both Google scripts asynchronously
+function loadGoogleScripts() {
+  const gapiScript = document.createElement('script');
+  gapiScript.src   = 'https://apis.google.com/js/api.js';
+  gapiScript.async = true;
+  gapiScript.defer = true;
+  gapiScript.onload = () => {
+    gapi.load('client', async () => {
+      await gapi.client.init({});
+      await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest');
+      gapiReady = true;
+    });
+  };
+  document.head.appendChild(gapiScript);
+
+  const gisScript = document.createElement('script');
+  gisScript.src   = 'https://accounts.google.com/gsi/client';
+  gisScript.async = true;
+  gisScript.defer = true;
+  gisScript.onload = () => { gisReady = true; };
+  document.head.appendChild(gisScript);
+}
+
+function initTokenClient() {
+  if (!state.gcalClientId) throw new Error('נא להזין Client ID בהגדרות');
+  if (!gisReady || typeof google === 'undefined') throw new Error('ספריית Google טרם נטענה — נסה שוב בעוד שניה');
+  gcalTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: state.gcalClientId,
+    scope: 'https://www.googleapis.com/auth/calendar.events.readonly',
+    callback: (tokenResponse) => {
+      if (tokenResponse.error) {
+        showToast('❌ שגיאת התחברות: ' + tokenResponse.error);
+        return;
+      }
+      gcalAccessToken = tokenResponse.access_token;
+      gapi.client.setToken({ access_token: gcalAccessToken });
+      updateGcalAuthUI(true);
+      showToast('✅ מחובר ל-Google Calendar');
+    }
+  });
+}
+
+function connectGoogle() {
+  // Save settings first so clientId is current
+  state.gcalClientId = document.getElementById('gcalClientIdInput').value.trim();
+  state.gcalKeywords = document.getElementById('gcalKeywordsInput').value.trim();
+  state.gcalMonths   = parseInt(document.getElementById('gcalMonthsInput').value) || 3;
+  save();
+
+  try {
+    initTokenClient();
+    gcalTokenClient.requestAccessToken({ prompt: 'consent' });
+  } catch(e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
+function disconnectGoogle() {
+  if (gcalAccessToken && typeof google !== 'undefined') {
+    google.accounts.oauth2.revoke(gcalAccessToken, () => {});
+  }
+  gcalAccessToken = null;
+  gcalTokenClient = null;
+  if (typeof gapi !== 'undefined') gapi.client.setToken(null);
+  updateGcalAuthUI(false);
+  showToast('🔌 החשבון נותק');
+}
+
+function updateGcalAuthUI(connected) {
+  const isConn = connected !== undefined ? connected : !!gcalAccessToken;
+  const statusEl      = document.getElementById('gcalAuthStatus');
+  const connectBtn    = document.getElementById('gcalConnectBtn');
+  const disconnectBtn = document.getElementById('gcalDisconnectBtn');
+  const syncBtn       = document.getElementById('gcalSyncBtn');
+  const pillEl        = document.getElementById('gcalStatus');
+
+  if (isConn) {
+    statusEl.textContent = '✅ מחובר ל-Google Calendar';
+    statusEl.classList.remove('hidden');
+    connectBtn.classList.add('hidden');
+    disconnectBtn.classList.remove('hidden');
+    syncBtn.classList.remove('hidden');
+    pillEl.classList.remove('hidden');
+  } else {
+    statusEl.classList.add('hidden');
+    connectBtn.classList.remove('hidden');
+    disconnectBtn.classList.add('hidden');
+    syncBtn.classList.add('hidden');
+    pillEl.classList.add('hidden');
+  }
+}
+
+// ─── GCAL SYNC MODAL ──────────────────────────────────────
+function openGCalSync() {
+  document.getElementById('gcalSyncModal').classList.remove('hidden');
+  document.getElementById('gcalSyncResult').classList.add('hidden');
+  document.getElementById('gcalSyncResult').innerHTML = '';
+}
+function closeGCalSync() { document.getElementById('gcalSyncModal').classList.add('hidden'); }
+
+async function runCalendarSync() {
+  if (!gcalAccessToken) {
+    showToast('❌ יש להתחבר לגוגל תחילה');
+    return;
+  }
+  if (!gapiReady) {
+    showToast('⏳ טוען ספריית Google, נסה שוב...');
+    return;
+  }
+
+  const btn = document.getElementById('gcalRunBtn');
+  btn.disabled  = true;
+  btn.textContent = '⏳ מושך אירועים...';
+
+  const resultEl = document.getElementById('gcalSyncResult');
+  resultEl.classList.remove('hidden');
+  resultEl.innerHTML = '<p class="text-gray-400 text-xs">מחפש אירועים...</p>';
+
+  try {
+    const keywords = (state.gcalKeywords || '')
+      .split(',')
+      .map(k => k.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (!keywords.length) throw new Error('לא הוגדרו מילות מפתח — הגדר אותן בהגדרות');
+
+    const now     = new Date();
+    const timeMin = now.toISOString();
+    const timeMax = new Date(now.getFullYear(), now.getMonth() + (state.gcalMonths || 3), now.getDate()).toISOString();
+
+    const resp = await gapi.client.calendar.events.list({
+      calendarId:   'primary',
+      timeMin,
+      timeMax,
+      singleEvents: true,
+      orderBy:      'startTime',
+      maxResults:   250
+    });
+
+    const events  = resp.result.items || [];
+    const matched = events.filter(ev => {
+      const title = (ev.summary || '').toLowerCase();
+      const desc  = (ev.description || '').toLowerCase();
+      return keywords.some(kw => title.includes(kw) || desc.includes(kw));
+    });
+
+    if (!matched.length) {
+      resultEl.innerHTML = '<p class="text-yellow-400 text-xs">לא נמצאו אירועים תואמים לטווח ולמילות המפתח שהגדרת.</p>';
+      return;
+    }
+
+    let added = 0, skipped = 0;
+    const lines = [];
+
+    for (const ev of matched) {
+      // Support both timed and all-day events
+      const startRaw = ev.start.date || ev.start.dateTime;
+      const endRaw   = ev.end.date   || ev.end.dateTime;
+      if (!startRaw || !endRaw) { skipped++; continue; }
+
+      const start = toDateStr(startRaw);
+      // Google all-day end is exclusive — subtract 1 day
+      let endDate = new Date(endRaw);
+      if (ev.end.date) endDate.setDate(endDate.getDate() - 1);
+      const end = toDateStr(endDate);
+
+      // Skip if exact duplicate already exists
+      const exists = state.miluim.some(p => p.start === start && p.end === end);
+      if (exists) { skipped++; lines.push(`<p class="text-gray-500 text-xs">↩ כבר קיים: ${ev.summary||'(ללא שם)'} (${start})</p>`); continue; }
+
+      state.miluim.push({ id:uid(), start, end, label: ev.summary || 'Google Calendar', fromGcal: true });
+      added++;
+      lines.push(`<p class="text-green-300 text-xs">✓ נוסף: ${escHtml(ev.summary||'ללא שם')} (${start} → ${end})</p>`);
+    }
+
+    save(); renderAll();
+    resultEl.innerHTML =
+      `<p class="text-white font-semibold text-sm mb-2">נמצאו ${matched.length} אירועים — נוספו ${added}, דולגו ${skipped}</p>` +
+      lines.join('');
+
+  } catch(e) {
+    resultEl.innerHTML = `<p class="text-red-400 text-xs">❌ שגיאה: ${escHtml(e.message || String(e))}</p>`;
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '🔄 משוך אירועים';
+  }
+}
+
+// ─── CHAT ─────────────────────────────────────────────────
+let chatOpen = false;
+function toggleChat() {
+  chatOpen = !chatOpen;
+  const panel = document.getElementById('chatPanel');
+  panel.style.display      = chatOpen ? 'flex' : 'none';
+  panel.style.flexDirection = chatOpen ? 'column' : '';
+  document.getElementById('chatToggleBtn').textContent = chatOpen ? '✖ סגור' : '💬 AI';
+  if (chatOpen && !state.chatHistory.length) {
+    appendChatBubble('model', 'שלום! אני מאמן הפרודוקטיביות שלך. שתף אותי בפרויקטים ובמשימות שלך, ואני אעזור לך לנהל את הזמן בצורה חכמה. 💪\n\nתוכל גם לסנכרן אירועים מ-Google Calendar להוספת חוסר זמינות אוטומטי.');
+  }
+  document.body.style.overflow = chatOpen && window.innerWidth < 768 ? 'hidden' : '';
+}
+function clearChat() {
+  state.chatHistory = [];
+  document.getElementById('chatMessages').innerHTML = '';
+  save();
+}
+
+function buildContextSnapshot() {
+  const today      = new Date().toISOString().slice(0,10);
+  const unavailStr = state.miluim.map(p=>`${p.label||'חוסר זמינות'}: ${p.start} עד ${p.end}`).join(', ') || 'לא הוזן';
+  const projectsStr = state.courses.map(c=>{
+    const net     = netWorkDays(c.dueDate);
+    const done    = c.tasks.filter(t=>t.done).length;
+    const pending = c.tasks.filter(t=>!t.done).map(t=>t.text);
+    return `• ${c.name} (${c.type==='hard'?'יעד קשיח':'מתמשך'}, יעד: ${c.dueDate||'לא הוגדר'}, ימי עבודה נטו: ${net??'?'}, בוצעו: ${done}/${c.tasks.length}, ממתינות: [${pending.join(', ')}])`;
+  }).join('\n') || 'אין פרויקטים';
+  return `[נתוני המשתמש נכון לתאריך ${today}]\nתקופות חוסר זמינות: ${unavailStr}\nפרויקטים:\n${projectsStr}`;
+}
+
+async function callGemini(userMessage) {
+  if (!state.apiKey) throw new Error('לא הוגדר API Key — פתח את ההגדרות');
+  const fullMsg  = `${buildContextSnapshot()}\n\n---\nהודעת המשתמש: ${userMessage}`;
+  const contents = state.chatHistory.map(h=>({ role:h.role, parts:[{text:h.text}] }));
+  contents.push({ role:'user', parts:[{text:fullMsg}] });
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${state.apiKey}`,
+    { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ system_instruction:{parts:[{text:SYSTEM_INSTRUCTION}]}, contents }) }
+  );
+  if (!resp.ok) {
+    const err = await resp.json().catch(()=>({}));
+    throw new Error(err?.error?.message || `שגיאת רשת ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '(תגובה ריקה)';
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const text  = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  await doSend(text);
+}
+
+async function sendDailySummary() {
+  const today   = new Date().toISOString().slice(0,10);
+  const done    = state.courses.flatMap(c=>c.tasks.filter(t=>t.done).map(t=>`${c.name}: ${t.text}`));
+  const pending = state.courses.flatMap(c=>c.tasks.filter(t=>!t.done).map(t=>`${c.name}: ${t.text}`));
+  await doSend(`בקשה לסיכום יום (${today}).\nבוצע: ${done.length?done.join(', '):'לא סומן'}\nממתין: ${pending.length?pending.join(', '):'אין'}\nבצע תחקור: מה הלך טוב? מה קרה עם מה שלא בוצע? ומה התוכנית למחר?`);
+}
+
+async function doSend(userText) {
+  appendChatBubble('user', userText);
+  state.chatHistory.push({ role:'user', text:userText });
+  const lid = 'loading_'+uid();
+  appendChatBubble('model', '', lid, true);
+  setSendDisabled(true);
+  try {
+    const reply = await callGemini(userText);
+    removeBubble(lid);
+    appendChatBubble('model', reply);
+    state.chatHistory.push({ role:'model', text:reply });
+    save();
+  } catch(e) {
+    removeBubble(lid);
+    appendChatBubble('model', `❌ ${e.message}`, '', false, true);
+  } finally { setSendDisabled(false); }
+}
+
+function appendChatBubble(role, text, id='', loading=false, isError=false) {
+  const container = document.getElementById('chatMessages');
+  const wrap   = document.createElement('div');
+  wrap.className = `flex ${role==='user'?'justify-start':'justify-end'}`;
+  if (id) wrap.id = id;
+  const bubble = document.createElement('div');
+  bubble.className = `max-w-[85%] px-3 py-2 text-sm leading-relaxed ${role==='user'?'chat-bubble-user':'chat-bubble-ai'} ${isError?'border border-red-500/50':''}`;
+  bubble.innerHTML = loading
+    ? `<span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full spinner"></span>`
+    : formatMessage(text);
+  wrap.appendChild(bubble);
+  container.appendChild(wrap);
+  container.scrollTop = container.scrollHeight;
+}
+function removeBubble(id) { const el=document.getElementById(id); if(el) el.remove(); }
+function setSendDisabled(v) {
+  document.getElementById('sendBtn').disabled    = v;
+  document.getElementById('chatInput').disabled  = v;
+}
+function formatMessage(text) {
+  return escHtml(text)
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/\n/g,'<br/>');
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── TOAST ────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 text-sm px-4 py-2 rounded-full shadow-xl z-[60]';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2800);
+}
+
+// ─── INIT ─────────────────────────────────────────────────
+load();
+renderAll();
+loadGoogleScripts();
+</script>
+</body>
+</html>
