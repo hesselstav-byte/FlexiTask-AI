@@ -550,6 +550,12 @@ function initTokenClient() {
       if (tokenResponse.error) { showToast('❌ שגיאת התחברות: ' + tokenResponse.error); return; }
       gcalAccessToken = tokenResponse.access_token;
       gapi.client.setToken({ access_token: gcalAccessToken });
+      // Persist token for auto-login on next page load (1 hour TTL)
+      localStorage.setItem('gcal_token', JSON.stringify({
+        access_token: gcalAccessToken,
+        issued_at:    Date.now(),
+        expires_at:   Date.now() + 3600000
+      }));
       updateGcalAuthUI(true);
       showToast('✅ מחובר ל-Google Calendar');
     }
@@ -573,6 +579,7 @@ function disconnectGoogle() {
   gcalAccessToken = null;
   gcalTokenClient = null;
   if (typeof gapi !== 'undefined') gapi.client.setToken(null);
+  localStorage.removeItem('gcal_token');
   updateGcalAuthUI(false);
   showToast('🔌 החשבון נותק');
 }
@@ -610,6 +617,15 @@ function closeGCalSync() { document.getElementById('gcalSyncModal').classList.ad
 
 // ─── CORE SYNC — scans ALL calendars in parallel ──────────
 async function runCalendarSync() {
+  // Check token expiry before attempting sync
+  const savedToken = JSON.parse(localStorage.getItem('gcal_token') || 'null');
+  if (savedToken && Date.now() >= savedToken.expires_at) {
+    gcalAccessToken = null;
+    localStorage.removeItem('gcal_token');
+    updateGcalAuthUI(false);
+    showToast('⏰ הטוקן פג תוקף — יש להתחבר מחדש');
+    return;
+  }
   if (!gcalAccessToken) { showToast('❌ יש להתחבר לגוגל תחילה'); return; }
   if (!gapiReady)        { showToast('⏳ טוען ספריית Google, נסה שוב...'); return; }
 
@@ -869,6 +885,25 @@ function showToast(msg) {
 load();
 renderAll();
 loadGoogleScripts();
+
+// Auto-login: restore Google token from LocalStorage if still valid
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = JSON.parse(localStorage.getItem('gcal_token') || 'null');
+  if (saved && Date.now() < saved.expires_at) {
+    gcalAccessToken = saved.access_token;
+    // Wait for gapi to be ready before setting the token
+    const trySetToken = setInterval(() => {
+      if (typeof gapi !== 'undefined' && gapi.client) {
+        gapi.client.setToken({ access_token: gcalAccessToken });
+        clearInterval(trySetToken);
+      }
+    }, 200);
+    updateGcalAuthUI(true);
+  } else if (saved) {
+    // Token exists but expired — clean up
+    localStorage.removeItem('gcal_token');
+  }
+});
 </script>
 </body>
 </html>
