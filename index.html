@@ -112,7 +112,7 @@
         <span class="text-lg">🤖</span>
         <div>
           <p class="font-semibold text-sm leading-none">מאמן הפרודוקטיביות שלך</p>
-          <p class="text-xs text-green-400">Gemini 1.5 Pro</p>
+          <p class="text-xs text-green-400">Gemini 1.5 Flash</p>
         </div>
       </div>
       <div class="flex gap-2">
@@ -145,7 +145,8 @@
     <label class="text-xs text-gray-400 block mb-1">API Key</label>
     <input id="apiKeyInput" type="password" placeholder="AIza..." dir="ltr"
       class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-1 focus:outline-none focus:border-blue-500" />
-    <p class="text-xs text-gray-500 mb-4">המפתח נשמר רק בדפדפן שלך (LocalStorage)</p>
+    <p class="text-xs text-gray-500 mb-1">המפתח נשמר רק בדפדפן שלך (LocalStorage)</p>
+    <p class="text-xs text-gray-600 mb-4">דגם פעיל: <span class="text-gray-400">gemini-1.5-flash</span></p>
 
     <div class="border-t border-gray-800 my-4"></div>
 
@@ -178,6 +179,14 @@
       class="hidden w-full bg-gray-700 hover:bg-gray-600 active:bg-gray-500 py-2.5 rounded-lg text-sm transition mb-3">
       🔌 נתק חשבון גוגל
     </button>
+
+    <!-- IGNORED EVENTS SECTION -->
+    <div id="ignoredSection" class="hidden">
+      <div class="border-t border-gray-800 my-4"></div>
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">🚫 אירועים שהתעלמת מהם</p>
+      <p class="text-xs text-gray-500 mb-2">אירועים שמחקת — לא יחזרו בסנכרון הבא. לחץ "שחזר" כדי לאפשר אותם מחדש.</p>
+      <div id="ignoredList" class="space-y-1.5"></div>
+    </div>
 
     <div class="border-t border-gray-800 my-3"></div>
     <div class="flex gap-2">
@@ -250,8 +259,12 @@ let state = {
   gcalClientId: '',
   gcalKeywords: 'מילואים,חופש,vacation,busy',
   gcalMonths: 3,
-  chatHistory: []
+  chatHistory: [],
+  ignoredEventIds: []  // [{ gcalId, name }]
 };
+
+const GEMINI_MODEL     = 'gemini-1.5-flash';
+const GEMINI_API_BASE  = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
 const SYSTEM_INSTRUCTION = `אתה מאמן פרודוקטיביות וניהול זמן אישי, חד וממוקד. תפקידך הוא לעזור למשתמש לנהל את המשימות והפרויקטים שלו בצורה אופטימלית, תוך התחשבות קשוחה בימי חוסר הזמינות שהוא מזין (כמו חופשות, מילואים או אילוצי עבודה). בכל פנייה, נתח את הנתונים העדכניים שלו שמועברים ברקע, שקף לו את מצבו האמיתי בגרפים ובמשימות, ועזור לו לפרק יעדים גדולים לתתי-משימות ריאליות. היה תומך אך אסרטיבי לגבי עמידה בזמנים. אל תענה על שאלות כלליות שאינן קשורות לניהול המשימות והזמן שלו. ענה בעברית.`;
 
@@ -325,7 +338,7 @@ function renderMiluim() {
     return;
   }
   el.innerHTML = state.miluim.map(p => {
-    const days     = daysBetween(p.start, p.end) + 1;
+    const days      = daysBetween(p.start, p.end) + 1;
     const gcalBadge = p.fromGcal ? `<span class="badge-gcal text-white text-xs px-1.5 py-0.5 rounded-full">📅</span>` : '';
     return `<div class="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2 text-sm gap-2">
       <div class="flex flex-col min-w-0">
@@ -408,7 +421,15 @@ function addMiluimPeriod() {
   ['miluimStart','miluimEnd','miluimLabel'].forEach(id=>document.getElementById(id).value='');
 }
 function removeMiluim(id) {
-  state.miluim = state.miluim.filter(p=>p.id!==id);
+  const period = state.miluim.find(p => p.id === id);
+  // If this came from GCal, add its event ID to the ignore list
+  if (period?.gcalEventId) {
+    const alreadyIgnored = state.ignoredEventIds.some(e => e.gcalId === period.gcalEventId);
+    if (!alreadyIgnored) {
+      state.ignoredEventIds.push({ gcalId: period.gcalEventId, name: period.label || 'אירוע ללא שם' });
+    }
+  }
+  state.miluim = state.miluim.filter(p => p.id !== id);
   save(); renderAll();
 }
 
@@ -450,19 +471,43 @@ function addTask(courseId) {
 
 // ─── SETTINGS ─────────────────────────────────────────────
 function openSettings() {
-  document.getElementById('apiKeyInput').value       = state.apiKey      || '';
+  document.getElementById('apiKeyInput').value       = state.apiKey       || '';
   document.getElementById('gcalClientIdInput').value = state.gcalClientId || '';
   document.getElementById('gcalKeywordsInput').value = state.gcalKeywords || '';
-  document.getElementById('gcalMonthsInput').value   = state.gcalMonths  || 3;
+  document.getElementById('gcalMonthsInput').value   = state.gcalMonths   || 3;
   updateGcalAuthUI();
+  renderIgnoredEvents();
   document.getElementById('settingsModal').classList.remove('hidden');
+}
+
+function renderIgnoredEvents() {
+  const list    = state.ignoredEventIds || [];
+  const section = document.getElementById('ignoredSection');
+  const el      = document.getElementById('ignoredList');
+  if (!list.length) { section.classList.add('hidden'); return; }
+  section.classList.remove('hidden');
+  el.innerHTML = list.map(e => `
+    <div class="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2 gap-2">
+      <span class="text-xs text-gray-300 truncate">${escHtml(e.name)}</span>
+      <button onclick="restoreIgnoredEvent('${e.gcalId}')"
+        class="shrink-0 text-xs bg-gray-700 hover:bg-blue-700 active:bg-blue-600 px-2 py-1 rounded-lg transition">
+        שחזר
+      </button>
+    </div>`).join('');
+}
+
+function restoreIgnoredEvent(gcalId) {
+  state.ignoredEventIds = state.ignoredEventIds.filter(e => e.gcalId !== gcalId);
+  save();
+  renderIgnoredEvents();
+  showToast('✅ האירוע שוחזר — יופיע בסנכרון הבא');
 }
 function closeSettings() { document.getElementById('settingsModal').classList.add('hidden'); }
 function saveSettings() {
-  state.apiKey        = document.getElementById('apiKeyInput').value.trim();
-  state.gcalClientId  = document.getElementById('gcalClientIdInput').value.trim();
-  state.gcalKeywords  = document.getElementById('gcalKeywordsInput').value.trim();
-  state.gcalMonths    = parseInt(document.getElementById('gcalMonthsInput').value) || 3;
+  state.apiKey       = document.getElementById('apiKeyInput').value.trim();
+  state.gcalClientId = document.getElementById('gcalClientIdInput').value.trim();
+  state.gcalKeywords = document.getElementById('gcalKeywordsInput').value.trim();
+  state.gcalMonths   = parseInt(document.getElementById('gcalMonthsInput').value) || 3;
   save(); closeSettings();
   showToast('✅ הגדרות נשמרו');
 }
@@ -474,11 +519,11 @@ let gapiReady       = false;
 let gisReady        = false;
 
 function loadGoogleScripts() {
-  const gapiScript   = document.createElement('script');
-  gapiScript.src     = 'https://apis.google.com/js/api.js';
-  gapiScript.async   = true;
-  gapiScript.defer   = true;
-  gapiScript.onload  = () => {
+  const gapiScript  = document.createElement('script');
+  gapiScript.src    = 'https://apis.google.com/js/api.js';
+  gapiScript.async  = true;
+  gapiScript.defer  = true;
+  gapiScript.onload = () => {
     gapi.load('client', async () => {
       await gapi.client.init({});
       await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest');
@@ -563,7 +608,7 @@ function openGCalSync() {
 }
 function closeGCalSync() { document.getElementById('gcalSyncModal').classList.add('hidden'); }
 
-// ─── CORE SYNC FUNCTION — scans ALL calendars ─────────────
+// ─── CORE SYNC — scans ALL calendars in parallel ──────────
 async function runCalendarSync() {
   if (!gcalAccessToken) { showToast('❌ יש להתחבר לגוגל תחילה'); return; }
   if (!gapiReady)        { showToast('⏳ טוען ספריית Google, נסה שוב...'); return; }
@@ -577,7 +622,6 @@ async function runCalendarSync() {
   resultEl.innerHTML = '<p class="text-gray-400 text-xs">מאחזר רשימת יומנים...</p>';
 
   try {
-    // ── Keyword list ──────────────────────────────────────
     const keywords = (state.gcalKeywords || '')
       .split(',')
       .map(k => k.trim().toLowerCase())
@@ -592,7 +636,7 @@ async function runCalendarSync() {
       now.getDate()
     ).toISOString();
 
-    // ── Step 1: fetch all calendars (primary + secondary) ─
+    // Step 1: fetch all calendars (primary + all secondary)
     const calListResp = await gapi.client.request({
       path:   'https://www.googleapis.com/calendar/v3/users/me/calendarList',
       params: { minAccessRole: 'reader', maxResults: 100 }
@@ -603,7 +647,7 @@ async function runCalendarSync() {
     resultEl.innerHTML =
       `<p class="text-gray-400 text-xs">נמצאו ${calendars.length} יומנים — מושך אירועים מכולם במקביל...</p>`;
 
-    // ── Step 2: fetch events from all calendars in parallel ─
+    // Step 2: fetch events from every calendar in parallel
     const fetchPromises = calendars.map(cal =>
       gapi.client.calendar.events.list({
         calendarId:   cal.id,
@@ -615,15 +659,14 @@ async function runCalendarSync() {
       })
       .then(r => (r.result.items || []).map(ev => ({
         ...ev,
-        _calName: cal.summary || cal.id,
-        _calId:   cal.id
+        _calName: cal.summary || cal.id
       })))
-      .catch(() => [])   // silently skip calendars we can't access
+      .catch(() => [])   // skip calendars we can't read
     );
 
     const allEventArrays = await Promise.all(fetchPromises);
 
-    // ── Step 3: flatten + deduplicate by event ID ─────────
+    // Step 3: flatten + deduplicate by event ID
     const seenIds   = new Set();
     const allEvents = allEventArrays.flat().filter(ev => {
       if (!ev.id || seenIds.has(ev.id)) return false;
@@ -631,7 +674,7 @@ async function runCalendarSync() {
       return true;
     });
 
-    // ── Step 4: filter by keywords (title + description) ──
+    // Step 4: filter by keywords in title + description
     const matched = allEvents.filter(ev => {
       const title = (ev.summary     || '').toLowerCase();
       const desc  = (ev.description || '').toLowerCase();
@@ -640,12 +683,12 @@ async function runCalendarSync() {
 
     if (!matched.length) {
       resultEl.innerHTML =
-        `<p class="text-yellow-400 text-xs">נסרקו <strong>${calendars.length}</strong> יומנים ו-<strong>${allEvents.length}</strong> אירועים — לא נמצאו התאמות למילות המפתח שהגדרת.</p>
-         <p class="text-gray-500 text-xs mt-1">מילות מפתח פעילות: ${keywords.map(k=>`"${k}"`).join(', ')}</p>`;
+        `<p class="text-yellow-400 text-xs">נסרקו <strong>${calendars.length}</strong> יומנים ו-<strong>${allEvents.length}</strong> אירועים — לא נמצאו התאמות.</p>
+         <p class="text-gray-500 text-xs mt-1">מילות מפתח: ${keywords.map(k=>`"${k}"`).join(', ')}</p>`;
       return;
     }
 
-    // ── Step 5: add to unavailability list ────────────────
+    // Step 5: add matched events to unavailability list
     let added = 0, skipped = 0;
     const lines = [];
 
@@ -656,32 +699,36 @@ async function runCalendarSync() {
 
       const start   = toDateStr(startRaw);
       let   endDate = new Date(endRaw);
-      // Google all-day events: end date is exclusive → subtract 1 day
-      if (ev.end.date) endDate.setDate(endDate.getDate() - 1);
+      if (ev.end.date) endDate.setDate(endDate.getDate() - 1); // all-day end is exclusive
       const end = toDateStr(endDate);
 
-      // Skip exact date duplicates already in list
-      const exists = state.miluim.some(p => p.start === start && p.end === end);
+      // Skip events the user explicitly deleted (ignore list)
+      const isIgnored = state.ignoredEventIds.some(e => e.gcalId === ev.id);
+      if (isIgnored) {
+        skipped++;
+        lines.push(`<p class="text-gray-600 text-xs">🚫 מתעלם (הוסר ידנית): ${escHtml(ev.summary||'ללא שם')}</p>`);
+        continue;
+      }
+
+      const exists = state.miluim.some(p => p.gcalEventId === ev.id || (p.start === start && p.end === end));
       if (exists) {
         skipped++;
         lines.push(`<p class="text-gray-500 text-xs">↩ כבר קיים: ${escHtml(ev.summary||'ללא שם')} (${start})</p>`);
         continue;
       }
 
-      // Build label: event name + calendar name if different
       const calSuffix = (ev._calName && ev._calName !== ev.summary) ? ` · ${ev._calName}` : '';
       const label     = `${ev.summary || 'Google Calendar'}${calSuffix}`;
 
-      state.miluim.push({ id:uid(), start, end, label, fromGcal: true });
+      state.miluim.push({ id:uid(), start, end, label, fromGcal: true, gcalEventId: ev.id });
       added++;
       lines.push(`<p class="text-green-300 text-xs">✓ נוסף: ${escHtml(label)} (${start} → ${end})</p>`);
     }
 
     save(); renderAll();
     resultEl.innerHTML =
-      `<p class="text-white font-semibold text-sm mb-2">
-        סרקתי ${calendars.length} יומנים · ${allEvents.length} אירועים · התאמות: ${matched.length} · נוספו: ${added} · דולגו: ${skipped}
-      </p>` + lines.join('');
+      `<p class="text-white font-semibold text-sm mb-2">סרקתי ${calendars.length} יומנים · ${allEvents.length} אירועים · התאמות: ${matched.length} · נוספו: ${added} · דולגו: ${skipped}</p>`
+      + lines.join('');
 
   } catch(e) {
     resultEl.innerHTML = `<p class="text-red-400 text-xs">❌ שגיאה: ${escHtml(e.message || String(e))}</p>`;
@@ -725,12 +772,19 @@ function buildContextSnapshot() {
 async function callGemini(userMessage) {
   if (!state.apiKey) throw new Error('לא הוגדר API Key — פתח את ההגדרות');
   const fullMsg  = `${buildContextSnapshot()}\n\n---\nהודעת המשתמש: ${userMessage}`;
-  const contents = state.chatHistory.map(h=>({ role:h.role, parts:[{text:h.text}] }));
+  const contents = state.chatHistory.map(h => ({ role:h.role, parts:[{text:h.text}] }));
   contents.push({ role:'user', parts:[{text:fullMsg}] });
+
   const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${state.apiKey}`,
-    { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ system_instruction:{parts:[{text:SYSTEM_INSTRUCTION}]}, contents }) }
+    `${GEMINI_API_BASE}${GEMINI_MODEL}:generateContent?key=${state.apiKey}`,
+    {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        system_instruction: { parts:[{text:SYSTEM_INSTRUCTION}] },
+        contents
+      })
+    }
   );
   if (!resp.ok) {
     const err = await resp.json().catch(()=>({}));
