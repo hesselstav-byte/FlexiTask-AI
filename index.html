@@ -264,7 +264,7 @@ let state = {
 };
 
 const GEMINI_MODEL     = 'gemini-1.5-flash';
-const GEMINI_API_BASE  = 'https://generativelanguage.googleapis.com/v1beta/models/';
+const GEMINI_API_BASE  = 'https://generativelanguage.googleapis.com/v1/models/';
 
 const SYSTEM_INSTRUCTION = `אתה מאמן פרודוקטיביות וניהול זמן אישי, חד וממוקד. תפקידך הוא לעזור למשתמש לנהל את המשימות והפרויקטים שלו בצורה אופטימלית, תוך התחשבות קשוחה בימי חוסר הזמינות שהוא מזין (כמו חופשות, מילואים או אילוצי עבודה). בכל פנייה, נתח את הנתונים העדכניים שלו שמועברים ברקע, שקף לו את מצבו האמיתי בגרפים ובמשימות, ועזור לו לפרק יעדים גדולים לתתי-משימות ריאליות. היה תומך אך אסרטיבי לגבי עמידה בזמנים. אל תענה על שאלות כלליות שאינן קשורות לניהול המשימות והזמן שלו. ענה בעברית.`;
 
@@ -887,11 +887,12 @@ renderAll();
 loadGoogleScripts();
 
 // Auto-login: restore Google token from LocalStorage if still valid
-document.addEventListener('DOMContentLoaded', () => {
+// (script runs at end of body — DOM is already ready, no DOMContentLoaded needed)
+(function restoreGcalToken() {
   const saved = JSON.parse(localStorage.getItem('gcal_token') || 'null');
   if (saved && Date.now() < saved.expires_at) {
     gcalAccessToken = saved.access_token;
-    // Wait for gapi to be ready before setting the token
+    // Wait for gapi to finish loading before setting the token
     const trySetToken = setInterval(() => {
       if (typeof gapi !== 'undefined' && gapi.client) {
         gapi.client.setToken({ access_token: gcalAccessToken });
@@ -900,10 +901,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 200);
     updateGcalAuthUI(true);
   } else if (saved) {
-    // Token exists but expired — clean up
     localStorage.removeItem('gcal_token');
   }
-});
+})();
 </script>
 </body>
 </html>
