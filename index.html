@@ -146,7 +146,7 @@
     <input id="apiKeyInput" type="password" placeholder="AIza..." dir="ltr"
       class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-1 focus:outline-none focus:border-blue-500" />
     <p class="text-xs text-gray-500 mb-1">המפתח נשמר רק בדפדפן שלך (LocalStorage)</p>
-    <p class="text-xs text-gray-600 mb-4">דגם פעיל: <span class="text-gray-400">gemini-1.5-flash</span></p>
+    <p class="text-xs text-gray-600 mb-4">דגם פעיל: <span class="text-gray-400">gemini-2.0-flash</span></p>
 
     <div class="border-t border-gray-800 my-4"></div>
 
@@ -793,23 +793,15 @@ async function callGemini(userMessage) {
   const contextMsg = `${buildContextSnapshot()}\n\n---\nהודעת המשתמש: ${userMessage}`;
   contents.push({ role: 'user', parts: [{ text: contextMsg }] });
 
-  // Inject system instruction as a plain prefix in the very first user turn
-  const firstUserIdx = contents.findIndex(c => c.role === 'user');
-  if (firstUserIdx !== -1) {
-    contents[firstUserIdx] = {
-      role:  'user',
-      parts: [{ text: `${SYSTEM_INSTRUCTION}\n\n---\n${contents[firstUserIdx].parts[0].text}` }]
-    };
-  }
-
-  const resp = await fetch(
-    `${GEMINI_API_BASE}${GEMINI_MODEL}:generateContent?key=${state.apiKey}`,
-    {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ contents })
-    }
-  );
+  const url = `${GEMINI_API_BASE}${GEMINI_MODEL}:generateContent?key=${state.apiKey}`;
+  const resp = await fetch(url, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      contents
+    })
+  });
   if (!resp.ok) {
     const err = await resp.json().catch(()=>({}));
     throw new Error(err?.error?.message || `שגיאת רשת ${resp.status}`);
