@@ -787,21 +787,18 @@ function buildContextSnapshot() {
 
 async function callGemini(userMessage) {
   if (!state.apiKey) throw new Error('לא הוגדר API Key — פתח את ההגדרות');
-  const fullMsg  = `${buildContextSnapshot()}\n\n---\nהודעת המשתמש: ${userMessage}`;
-  const history  = state.chatHistory.map(h => ({ role:h.role, parts:[{text:h.text}] }));
-  // Prepend system instruction to the first user turn so v1 accepts it
-  const firstUserText = history.length === 0
-    ? `${SYSTEM_INSTRUCTION}\n\n---\n${fullMsg}`
-    : fullMsg;
-  const contents = [
-    ...history,
-    { role:'user', parts:[{text: history.length === 0 ? firstUserText : fullMsg}] }
-  ];
-  // If there's prior history, inject system instruction into the very first user message
-  if (history.length > 0 && contents[0].role === 'user') {
-    contents[0] = {
+
+  // Build contents array from history + current message
+  const contents = state.chatHistory.map(h => ({ role: h.role, parts: [{ text: h.text }] }));
+  const contextMsg = `${buildContextSnapshot()}\n\n---\nהודעת המשתמש: ${userMessage}`;
+  contents.push({ role: 'user', parts: [{ text: contextMsg }] });
+
+  // Inject system instruction as a plain prefix in the very first user turn
+  const firstUserIdx = contents.findIndex(c => c.role === 'user');
+  if (firstUserIdx !== -1) {
+    contents[firstUserIdx] = {
       role:  'user',
-      parts: [{ text: `${SYSTEM_INSTRUCTION}\n\n---\n${contents[0].parts[0].text}` }]
+      parts: [{ text: `${SYSTEM_INSTRUCTION}\n\n---\n${contents[firstUserIdx].parts[0].text}` }]
     };
   }
 
