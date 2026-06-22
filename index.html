@@ -38,9 +38,6 @@
     }
 
     button, input, select, textarea { touch-action: manipulation; }
-
-    /* gcal status pill */
-    #gcalStatus { transition: all .3s; }
   </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
@@ -67,7 +64,6 @@
   <!-- MAIN CONTENT -->
   <main class="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-thin" id="mainContent">
 
-    <!-- SUMMARY CARDS -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="summaryCards"></div>
 
     <!-- UNAVAILABILITY SECTION -->
@@ -80,8 +76,6 @@
         </button>
       </div>
       <p class="text-xs text-gray-500 mb-3">חופשות, עומס, מילואים — ימים שלא יחושבו בזמן הפנוי</p>
-
-      <!-- Manual add -->
       <div class="flex gap-2 flex-wrap items-end">
         <div>
           <label class="text-xs text-gray-400 block mb-1">מתאריך</label>
@@ -144,20 +138,17 @@
 
 <!-- SETTINGS MODAL -->
 <div id="settingsModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
-  <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+  <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto scrollbar-thin">
     <h3 class="font-bold text-lg mb-4">⚙️ הגדרות</h3>
 
-    <!-- Gemini -->
     <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Gemini AI</p>
     <label class="text-xs text-gray-400 block mb-1">API Key</label>
     <input id="apiKeyInput" type="password" placeholder="AIza..." dir="ltr"
       class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-1 focus:outline-none focus:border-blue-500" />
     <p class="text-xs text-gray-500 mb-4">המפתח נשמר רק בדפדפן שלך (LocalStorage)</p>
 
-    <!-- Divider -->
     <div class="border-t border-gray-800 my-4"></div>
 
-    <!-- Google Calendar -->
     <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Google Calendar</p>
     <label class="text-xs text-gray-400 block mb-1">Client ID</label>
     <input id="gcalClientIdInput" type="text" placeholder="xxxx.apps.googleusercontent.com" dir="ltr"
@@ -167,7 +158,7 @@
     <label class="text-xs text-gray-400 block mb-1">מילות מפתח לסינון אירועים</label>
     <input id="gcalKeywordsInput" type="text" placeholder="מילואים, חופש, vacation, busy..." dir="rtl"
       class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-1 focus:outline-none focus:border-green-500" />
-    <p class="text-xs text-gray-500 mb-3">מופרדות בפסיקים — אירועים עם מילים אלו יתווספו כחוסר זמינות</p>
+    <p class="text-xs text-gray-500 mb-3">מופרדות בפסיקים — נסרקים כל היומנים (ראשי + משניים)</p>
 
     <label class="text-xs text-gray-400 block mb-1">טווח חיפוש קדימה (חודשים)</label>
     <select id="gcalMonthsInput" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm mb-4 focus:outline-none focus:border-green-500">
@@ -200,14 +191,12 @@
 <div id="gcalSyncModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
   <div class="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-700 shadow-2xl">
     <h3 class="font-bold text-lg mb-1">📅 סנכרון Google Calendar</h3>
-    <p class="text-xs text-gray-400 mb-4">אירועים שיימצאו יתווספו לרשימת חוסר הזמינות</p>
-
-    <div id="gcalSyncResult" class="hidden mb-4 text-sm bg-gray-800 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1"></div>
-
+    <p class="text-xs text-gray-400 mb-4">סורק את <strong>כל היומנים</strong> — ראשי ומשניים (כולל יומן אוניברסיטה)</p>
+    <div id="gcalSyncResult" class="hidden mb-4 text-sm bg-gray-800 rounded-xl p-3 max-h-56 overflow-y-auto space-y-1 scrollbar-thin"></div>
     <div class="flex gap-2">
       <button onclick="runCalendarSync()" id="gcalRunBtn"
         class="flex-1 bg-green-700 hover:bg-green-600 active:bg-green-500 py-2.5 rounded-lg text-sm transition font-medium">
-        🔄 משוך אירועים
+        🔄 משוך אירועים מכל היומנים
       </button>
       <button onclick="closeGCalSync()" class="flex-1 bg-gray-700 active:bg-gray-600 py-2.5 rounded-lg text-sm transition">סגור</button>
     </div>
@@ -294,21 +283,21 @@ function netWorkDays(dueDate) {
   const today = new Date().toISOString().slice(0,10);
   let overlap = 0;
   for (const p of state.miluim) {
-    const s = p.start > today ? p.start : today;
-    const e = p.end   < dueDate ? p.end : dueDate;
+    const s = p.start > today   ? p.start : today;
+    const e = p.end   < dueDate ? p.end   : dueDate;
     if (s <= e) overlap += daysBetween(s, e) + 1;
   }
   return Math.max(0, total - overlap);
 }
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function uid()        { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function toDateStr(d) { return new Date(d).toISOString().slice(0,10); }
 
 // ─── RENDER ───────────────────────────────────────────────
 function renderSummary() {
-  const tp = state.courses.length;
-  const tt = state.courses.reduce((a,c)=>a+c.tasks.length,0);
-  const dt = state.courses.reduce((a,c)=>a+c.tasks.filter(t=>t.done).length,0);
-  const ud = countUnavailableDays();
+  const tp  = state.courses.length;
+  const tt  = state.courses.reduce((a,c)=>a+c.tasks.length,0);
+  const dt  = state.courses.reduce((a,c)=>a+c.tasks.filter(t=>t.done).length,0);
+  const ud  = countUnavailableDays();
   const pct = tt ? Math.round(dt/tt*100) : 0;
   document.getElementById('summaryCards').innerHTML = `
     <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
@@ -336,13 +325,13 @@ function renderMiluim() {
     return;
   }
   el.innerHTML = state.miluim.map(p => {
-    const days = daysBetween(p.start, p.end) + 1;
-    const fromGcal = p.fromGcal ? `<span class="badge-gcal text-white text-xs px-1.5 py-0.5 rounded-full">📅</span>` : '';
+    const days     = daysBetween(p.start, p.end) + 1;
+    const gcalBadge = p.fromGcal ? `<span class="badge-gcal text-white text-xs px-1.5 py-0.5 rounded-full">📅</span>` : '';
     return `<div class="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2 text-sm gap-2">
       <div class="flex flex-col min-w-0">
         <div class="flex items-center gap-1.5">
-          ${fromGcal}
-          ${p.label ? `<span class="text-gray-200 text-xs font-medium">${escHtml(p.label)}</span>` : ''}
+          ${gcalBadge}
+          ${p.label ? `<span class="text-gray-200 text-xs font-medium truncate">${escHtml(p.label)}</span>` : ''}
         </div>
         <span class="text-orange-300 font-medium text-xs">${p.start} → ${p.end}</span>
       </div>
@@ -461,36 +450,35 @@ function addTask(courseId) {
 
 // ─── SETTINGS ─────────────────────────────────────────────
 function openSettings() {
-  document.getElementById('apiKeyInput').value        = state.apiKey || '';
-  document.getElementById('gcalClientIdInput').value  = state.gcalClientId || '';
-  document.getElementById('gcalKeywordsInput').value  = state.gcalKeywords || '';
-  document.getElementById('gcalMonthsInput').value    = state.gcalMonths || 3;
+  document.getElementById('apiKeyInput').value       = state.apiKey      || '';
+  document.getElementById('gcalClientIdInput').value = state.gcalClientId || '';
+  document.getElementById('gcalKeywordsInput').value = state.gcalKeywords || '';
+  document.getElementById('gcalMonthsInput').value   = state.gcalMonths  || 3;
   updateGcalAuthUI();
   document.getElementById('settingsModal').classList.remove('hidden');
 }
 function closeSettings() { document.getElementById('settingsModal').classList.add('hidden'); }
 function saveSettings() {
-  state.apiKey       = document.getElementById('apiKeyInput').value.trim();
-  state.gcalClientId = document.getElementById('gcalClientIdInput').value.trim();
-  state.gcalKeywords = document.getElementById('gcalKeywordsInput').value.trim();
-  state.gcalMonths   = parseInt(document.getElementById('gcalMonthsInput').value) || 3;
+  state.apiKey        = document.getElementById('apiKeyInput').value.trim();
+  state.gcalClientId  = document.getElementById('gcalClientIdInput').value.trim();
+  state.gcalKeywords  = document.getElementById('gcalKeywordsInput').value.trim();
+  state.gcalMonths    = parseInt(document.getElementById('gcalMonthsInput').value) || 3;
   save(); closeSettings();
   showToast('✅ הגדרות נשמרו');
 }
 
-// ─── GOOGLE CALENDAR INTEGRATION ─────────────────────────
+// ─── GOOGLE CALENDAR ──────────────────────────────────────
 let gcalTokenClient = null;
 let gcalAccessToken = null;
 let gapiReady       = false;
 let gisReady        = false;
 
-// Load both Google scripts asynchronously
 function loadGoogleScripts() {
-  const gapiScript = document.createElement('script');
-  gapiScript.src   = 'https://apis.google.com/js/api.js';
-  gapiScript.async = true;
-  gapiScript.defer = true;
-  gapiScript.onload = () => {
+  const gapiScript   = document.createElement('script');
+  gapiScript.src     = 'https://apis.google.com/js/api.js';
+  gapiScript.async   = true;
+  gapiScript.defer   = true;
+  gapiScript.onload  = () => {
     gapi.load('client', async () => {
       await gapi.client.init({});
       await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest');
@@ -499,10 +487,10 @@ function loadGoogleScripts() {
   };
   document.head.appendChild(gapiScript);
 
-  const gisScript = document.createElement('script');
-  gisScript.src   = 'https://accounts.google.com/gsi/client';
-  gisScript.async = true;
-  gisScript.defer = true;
+  const gisScript  = document.createElement('script');
+  gisScript.src    = 'https://accounts.google.com/gsi/client';
+  gisScript.async  = true;
+  gisScript.defer  = true;
   gisScript.onload = () => { gisReady = true; };
   document.head.appendChild(gisScript);
 }
@@ -512,12 +500,9 @@ function initTokenClient() {
   if (!gisReady || typeof google === 'undefined') throw new Error('ספריית Google טרם נטענה — נסה שוב בעוד שניה');
   gcalTokenClient = google.accounts.oauth2.initTokenClient({
     client_id: state.gcalClientId,
-    scope: 'https://www.googleapis.com/auth/calendar.events.readonly',
+    scope: 'https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly',
     callback: (tokenResponse) => {
-      if (tokenResponse.error) {
-        showToast('❌ שגיאת התחברות: ' + tokenResponse.error);
-        return;
-      }
+      if (tokenResponse.error) { showToast('❌ שגיאת התחברות: ' + tokenResponse.error); return; }
       gcalAccessToken = tokenResponse.access_token;
       gapi.client.setToken({ access_token: gcalAccessToken });
       updateGcalAuthUI(true);
@@ -527,24 +512,19 @@ function initTokenClient() {
 }
 
 function connectGoogle() {
-  // Save settings first so clientId is current
   state.gcalClientId = document.getElementById('gcalClientIdInput').value.trim();
   state.gcalKeywords = document.getElementById('gcalKeywordsInput').value.trim();
   state.gcalMonths   = parseInt(document.getElementById('gcalMonthsInput').value) || 3;
   save();
-
   try {
     initTokenClient();
     gcalTokenClient.requestAccessToken({ prompt: 'consent' });
-  } catch(e) {
-    showToast('❌ ' + e.message);
-  }
+  } catch(e) { showToast('❌ ' + e.message); }
 }
 
 function disconnectGoogle() {
-  if (gcalAccessToken && typeof google !== 'undefined') {
+  if (gcalAccessToken && typeof google !== 'undefined')
     google.accounts.oauth2.revoke(gcalAccessToken, () => {});
-  }
   gcalAccessToken = null;
   gcalTokenClient = null;
   if (typeof gapi !== 'undefined') gapi.client.setToken(null);
@@ -553,13 +533,12 @@ function disconnectGoogle() {
 }
 
 function updateGcalAuthUI(connected) {
-  const isConn = connected !== undefined ? connected : !!gcalAccessToken;
+  const isConn        = connected !== undefined ? connected : !!gcalAccessToken;
   const statusEl      = document.getElementById('gcalAuthStatus');
   const connectBtn    = document.getElementById('gcalConnectBtn');
   const disconnectBtn = document.getElementById('gcalDisconnectBtn');
   const syncBtn       = document.getElementById('gcalSyncBtn');
   const pillEl        = document.getElementById('gcalStatus');
-
   if (isConn) {
     statusEl.textContent = '✅ מחובר ל-Google Calendar';
     statusEl.classList.remove('hidden');
@@ -584,91 +563,131 @@ function openGCalSync() {
 }
 function closeGCalSync() { document.getElementById('gcalSyncModal').classList.add('hidden'); }
 
+// ─── CORE SYNC FUNCTION — scans ALL calendars ─────────────
 async function runCalendarSync() {
-  if (!gcalAccessToken) {
-    showToast('❌ יש להתחבר לגוגל תחילה');
-    return;
-  }
-  if (!gapiReady) {
-    showToast('⏳ טוען ספריית Google, נסה שוב...');
-    return;
-  }
+  if (!gcalAccessToken) { showToast('❌ יש להתחבר לגוגל תחילה'); return; }
+  if (!gapiReady)        { showToast('⏳ טוען ספריית Google, נסה שוב...'); return; }
 
   const btn = document.getElementById('gcalRunBtn');
-  btn.disabled  = true;
+  btn.disabled    = true;
   btn.textContent = '⏳ מושך אירועים...';
 
   const resultEl = document.getElementById('gcalSyncResult');
   resultEl.classList.remove('hidden');
-  resultEl.innerHTML = '<p class="text-gray-400 text-xs">מחפש אירועים...</p>';
+  resultEl.innerHTML = '<p class="text-gray-400 text-xs">מאחזר רשימת יומנים...</p>';
 
   try {
+    // ── Keyword list ──────────────────────────────────────
     const keywords = (state.gcalKeywords || '')
       .split(',')
       .map(k => k.trim().toLowerCase())
       .filter(Boolean);
-
-    if (!keywords.length) throw new Error('לא הוגדרו מילות מפתח — הגדר אותן בהגדרות');
+    if (!keywords.length) throw new Error('לא הוגדרו מילות מפתח — הגדר בהגדרות');
 
     const now     = new Date();
     const timeMin = now.toISOString();
-    const timeMax = new Date(now.getFullYear(), now.getMonth() + (state.gcalMonths || 3), now.getDate()).toISOString();
+    const timeMax = new Date(
+      now.getFullYear(),
+      now.getMonth() + (state.gcalMonths || 3),
+      now.getDate()
+    ).toISOString();
 
-    const resp = await gapi.client.calendar.events.list({
-      calendarId:   'primary',
-      timeMin,
-      timeMax,
-      singleEvents: true,
-      orderBy:      'startTime',
-      maxResults:   250
+    // ── Step 1: fetch all calendars (primary + secondary) ─
+    const calListResp = await gapi.client.request({
+      path:   'https://www.googleapis.com/calendar/v3/users/me/calendarList',
+      params: { minAccessRole: 'reader', maxResults: 100 }
+    });
+    const calendars = calListResp.result.items || [];
+    if (!calendars.length) throw new Error('לא נמצאו יומנים בחשבון');
+
+    resultEl.innerHTML =
+      `<p class="text-gray-400 text-xs">נמצאו ${calendars.length} יומנים — מושך אירועים מכולם במקביל...</p>`;
+
+    // ── Step 2: fetch events from all calendars in parallel ─
+    const fetchPromises = calendars.map(cal =>
+      gapi.client.calendar.events.list({
+        calendarId:   cal.id,
+        timeMin,
+        timeMax,
+        singleEvents: true,
+        orderBy:      'startTime',
+        maxResults:   250
+      })
+      .then(r => (r.result.items || []).map(ev => ({
+        ...ev,
+        _calName: cal.summary || cal.id,
+        _calId:   cal.id
+      })))
+      .catch(() => [])   // silently skip calendars we can't access
+    );
+
+    const allEventArrays = await Promise.all(fetchPromises);
+
+    // ── Step 3: flatten + deduplicate by event ID ─────────
+    const seenIds   = new Set();
+    const allEvents = allEventArrays.flat().filter(ev => {
+      if (!ev.id || seenIds.has(ev.id)) return false;
+      seenIds.add(ev.id);
+      return true;
     });
 
-    const events  = resp.result.items || [];
-    const matched = events.filter(ev => {
-      const title = (ev.summary || '').toLowerCase();
+    // ── Step 4: filter by keywords (title + description) ──
+    const matched = allEvents.filter(ev => {
+      const title = (ev.summary     || '').toLowerCase();
       const desc  = (ev.description || '').toLowerCase();
       return keywords.some(kw => title.includes(kw) || desc.includes(kw));
     });
 
     if (!matched.length) {
-      resultEl.innerHTML = '<p class="text-yellow-400 text-xs">לא נמצאו אירועים תואמים לטווח ולמילות המפתח שהגדרת.</p>';
+      resultEl.innerHTML =
+        `<p class="text-yellow-400 text-xs">נסרקו <strong>${calendars.length}</strong> יומנים ו-<strong>${allEvents.length}</strong> אירועים — לא נמצאו התאמות למילות המפתח שהגדרת.</p>
+         <p class="text-gray-500 text-xs mt-1">מילות מפתח פעילות: ${keywords.map(k=>`"${k}"`).join(', ')}</p>`;
       return;
     }
 
+    // ── Step 5: add to unavailability list ────────────────
     let added = 0, skipped = 0;
     const lines = [];
 
     for (const ev of matched) {
-      // Support both timed and all-day events
       const startRaw = ev.start.date || ev.start.dateTime;
       const endRaw   = ev.end.date   || ev.end.dateTime;
       if (!startRaw || !endRaw) { skipped++; continue; }
 
-      const start = toDateStr(startRaw);
-      // Google all-day end is exclusive — subtract 1 day
-      let endDate = new Date(endRaw);
+      const start   = toDateStr(startRaw);
+      let   endDate = new Date(endRaw);
+      // Google all-day events: end date is exclusive → subtract 1 day
       if (ev.end.date) endDate.setDate(endDate.getDate() - 1);
       const end = toDateStr(endDate);
 
-      // Skip if exact duplicate already exists
+      // Skip exact date duplicates already in list
       const exists = state.miluim.some(p => p.start === start && p.end === end);
-      if (exists) { skipped++; lines.push(`<p class="text-gray-500 text-xs">↩ כבר קיים: ${ev.summary||'(ללא שם)'} (${start})</p>`); continue; }
+      if (exists) {
+        skipped++;
+        lines.push(`<p class="text-gray-500 text-xs">↩ כבר קיים: ${escHtml(ev.summary||'ללא שם')} (${start})</p>`);
+        continue;
+      }
 
-      state.miluim.push({ id:uid(), start, end, label: ev.summary || 'Google Calendar', fromGcal: true });
+      // Build label: event name + calendar name if different
+      const calSuffix = (ev._calName && ev._calName !== ev.summary) ? ` · ${ev._calName}` : '';
+      const label     = `${ev.summary || 'Google Calendar'}${calSuffix}`;
+
+      state.miluim.push({ id:uid(), start, end, label, fromGcal: true });
       added++;
-      lines.push(`<p class="text-green-300 text-xs">✓ נוסף: ${escHtml(ev.summary||'ללא שם')} (${start} → ${end})</p>`);
+      lines.push(`<p class="text-green-300 text-xs">✓ נוסף: ${escHtml(label)} (${start} → ${end})</p>`);
     }
 
     save(); renderAll();
     resultEl.innerHTML =
-      `<p class="text-white font-semibold text-sm mb-2">נמצאו ${matched.length} אירועים — נוספו ${added}, דולגו ${skipped}</p>` +
-      lines.join('');
+      `<p class="text-white font-semibold text-sm mb-2">
+        סרקתי ${calendars.length} יומנים · ${allEvents.length} אירועים · התאמות: ${matched.length} · נוספו: ${added} · דולגו: ${skipped}
+      </p>` + lines.join('');
 
   } catch(e) {
     resultEl.innerHTML = `<p class="text-red-400 text-xs">❌ שגיאה: ${escHtml(e.message || String(e))}</p>`;
   } finally {
     btn.disabled    = false;
-    btn.textContent = '🔄 משוך אירועים';
+    btn.textContent = '🔄 משוך אירועים מכל היומנים';
   }
 }
 
@@ -677,11 +696,11 @@ let chatOpen = false;
 function toggleChat() {
   chatOpen = !chatOpen;
   const panel = document.getElementById('chatPanel');
-  panel.style.display      = chatOpen ? 'flex' : 'none';
+  panel.style.display       = chatOpen ? 'flex' : 'none';
   panel.style.flexDirection = chatOpen ? 'column' : '';
   document.getElementById('chatToggleBtn').textContent = chatOpen ? '✖ סגור' : '💬 AI';
   if (chatOpen && !state.chatHistory.length) {
-    appendChatBubble('model', 'שלום! אני מאמן הפרודוקטיביות שלך. שתף אותי בפרויקטים ובמשימות שלך, ואני אעזור לך לנהל את הזמן בצורה חכמה. 💪\n\nתוכל גם לסנכרן אירועים מ-Google Calendar להוספת חוסר זמינות אוטומטי.');
+    appendChatBubble('model', 'שלום! אני מאמן הפרודוקטיביות שלך. שתף אותי בפרויקטים שלך ואני אעזור לנהל את הזמן חכם. 💪\n\nתוכל לסנכרן אירועים מכל יומני Google שלך (כולל יומן האוניברסיטה) להוספת חוסר זמינות אוטומטי.');
   }
   document.body.style.overflow = chatOpen && window.innerWidth < 768 ? 'hidden' : '';
 }
@@ -692,8 +711,8 @@ function clearChat() {
 }
 
 function buildContextSnapshot() {
-  const today      = new Date().toISOString().slice(0,10);
-  const unavailStr = state.miluim.map(p=>`${p.label||'חוסר זמינות'}: ${p.start} עד ${p.end}`).join(', ') || 'לא הוזן';
+  const today       = new Date().toISOString().slice(0,10);
+  const unavailStr  = state.miluim.map(p=>`${p.label||'חוסר זמינות'}: ${p.start} עד ${p.end}`).join(', ') || 'לא הוזן';
   const projectsStr = state.courses.map(c=>{
     const net     = netWorkDays(c.dueDate);
     const done    = c.tasks.filter(t=>t.done).length;
@@ -770,8 +789,8 @@ function appendChatBubble(role, text, id='', loading=false, isError=false) {
 }
 function removeBubble(id) { const el=document.getElementById(id); if(el) el.remove(); }
 function setSendDisabled(v) {
-  document.getElementById('sendBtn').disabled    = v;
-  document.getElementById('chatInput').disabled  = v;
+  document.getElementById('sendBtn').disabled   = v;
+  document.getElementById('chatInput').disabled = v;
 }
 function formatMessage(text) {
   return escHtml(text)
