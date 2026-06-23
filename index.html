@@ -385,7 +385,9 @@ function renderCourses() {
     const done  = c.tasks.filter(t=>t.done).length;
     const total = c.tasks.length;
     const pct   = total ? Math.round(done/total*100) : 0;
-    const urgentClass = until !== null && until <= 3 ? 'border-red-500/50' : until !== null && until <= 7 ? 'border-yellow-500/40' : 'border-gray-700';
+    const urgentClass = until !== null && until <= 2 ? 'border-red-500/60' : until !== null && until <= 5 ? 'border-orange-500/50' : until !== null && until <= 14 ? 'border-yellow-500/30' : 'border-gray-700';
+    const countdownColor = until === null ? '' : until < 0 ? 'text-red-400 font-bold' : until <= 2 ? 'text-red-400 font-semibold' : until <= 5 ? 'text-orange-400 font-semibold' : until <= 14 ? 'text-yellow-400' : 'text-gray-400';
+    const countdownText  = until === null ? '' : until < 0 ? `⛔ עבר לפני ${Math.abs(until)} ימים!` : until === 0 ? '🔴 היום!' : until === 1 ? '🔴 מחר!' : until === 2 ? `🔴 עוד יומיים!` : until <= 5 ? `🟠 עוד ${until} ימים` : `עוד ${until} ימים`;
     const badge = c.type === 'hard'
       ? `<span class="badge-hard text-xs px-2 py-0.5 rounded-full text-white">יעד קשיח</span>`
       : `<span class="badge-ongoing text-xs px-2 py-0.5 rounded-full text-white">מתמשך</span>`;
@@ -401,7 +403,7 @@ function renderCourses() {
           <div class="flex items-center gap-2 flex-wrap min-w-0">
             ${badge}
             <h3 class="font-semibold text-sm">${escHtml(c.name)}</h3>
-            ${until !== null ? `<span class="text-xs ${until<=3?'text-red-400':until<=7?'text-yellow-400':'text-gray-400'}">${until<0?'⚠️ עבר!':until===0?'היום!':until+' ימים'}</span>` : ''}
+            ${until !== null ? `<span class="text-xs ${countdownColor}">${countdownText}</span>` : ''}
           </div>
           <button onclick="removeCourse('${c.id}')" class="text-gray-600 active:text-red-400 text-xs shrink-0 p-1">✕</button>
         </div>
@@ -438,6 +440,7 @@ function addMiluimPeriod() {
   ['miluimStart','miluimEnd','miluimLabel'].forEach(id=>document.getElementById(id).value='');
 }
 function removeMiluim(id) {
+  if (!confirm('למחוק את תקופת חוסר הזמינות?')) return;
   const period = state.miluim.find(p => p.id === id);
   // If this came from GCal, add its event ID to the ignore list
   if (period?.gcalEventId) {
@@ -779,8 +782,15 @@ function toggleChat() {
   panel.style.display       = chatOpen ? 'flex' : 'none';
   panel.style.flexDirection = chatOpen ? 'column' : '';
   document.getElementById('chatToggleBtn').textContent = chatOpen ? '✖ סגור' : '💬 AI';
-  if (chatOpen && !state.chatHistory.length) {
-    appendChatBubble('model', 'שלום! אני מאמן הפרודוקטיביות שלך. שתף אותי בפרויקטים שלך ואני אעזור לנהל את הזמן חכם. 💪\n\nתוכל לסנכרן אירועים מכל יומני Google שלך (כולל יומן האוניברסיטה) להוספת חוסר זמינות אוטומטי.');
+  if (chatOpen) {
+    const msgs = document.getElementById('chatMessages');
+    if (!msgs.children.length) {
+      if (state.chatHistory.length) {
+        state.chatHistory.forEach(h => appendChatBubble(h.role, h.text));
+      } else {
+        appendChatBubble('model', 'שלום! אני מאמן הפרודוקטיביות שלך. שתף אותי בפרויקטים שלך ואני אעזור לנהל את הזמן חכם. 💪\n\nתוכל לסנכרן אירועים מכל יומני Google שלך (כולל יומן האוניברסיטה) להוספת חוסר זמינות אוטומטי.');
+      }
+    }
   }
   document.body.style.overflow = chatOpen && window.innerWidth < 768 ? 'hidden' : '';
 }
