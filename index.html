@@ -112,7 +112,7 @@
         <span class="text-lg">🤖</span>
         <div>
           <p class="font-semibold text-sm leading-none">מאמן הפרודוקטיביות שלך</p>
-          <p class="text-xs text-green-400">Gemini 2.0 Flash</p>
+          <p class="text-xs text-green-400">Gemini 3.1 Flash Lite</p>
         </div>
       </div>
       <div class="flex gap-2">
@@ -263,7 +263,7 @@ let state = {
   ignoredEventIds: []  // [{ gcalId, name }]
 };
 
-const GEMINI_MODEL     = 'gemini-2.0-flash';
+const GEMINI_MODEL     = 'gemini-3.1-flash-lite';
 const GEMINI_API_BASE  = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
 const SYSTEM_INSTRUCTION = `אתה מאמן פרודוקטיביות וניהול זמן אישי, חד וממוקד. תפקידך הוא לעזור למשתמש לנהל את המשימות והפרויקטים שלו בצורה אופטימלית, תוך התחשבות קשוחה בימי חוסר הזמינות שהוא מזין (כמו חופשות, מילואים או אילוצי עבודה). בכל פנייה, נתח את הנתונים העדכניים שלו שמועברים ברקע, שקף לו את מצבו האמיתי בגרפים ובמשימות, ועזור לו לפרק יעדים גדולים לתתי-משימות ריאליות. היה תומך אך אסרטיבי לגבי עמידה בזמנים. אל תענה על שאלות כלליות שאינן קשורות לניהול המשימות והזמן שלו. ענה בעברית.`;
