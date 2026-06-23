@@ -291,7 +291,20 @@ function daysBetween(a, b) {
   return Math.max(0, Math.round((new Date(b) - new Date(a)) / 86400000));
 }
 function countUnavailableDays() {
-  return state.miluim.reduce((t,p) => t + daysBetween(p.start, p.end) + 1, 0);
+  return state.miluim.reduce((t,p) => {
+    const days   = daysBetween(p.start, p.end) + 1;
+    const weight = p.periodType === 'partial' ? 0.5 : 1;
+    return t + days * weight;
+  }, 0);
+}
+function countUnavailableBreakdown() {
+  let full = 0, partial = 0;
+  for (const p of state.miluim) {
+    const days = daysBetween(p.start, p.end) + 1;
+    if (p.periodType === 'partial') partial += days;
+    else full += days;
+  }
+  return { full, partial };
 }
 function daysUntil(dateStr) {
   if (!dateStr) return null;
@@ -322,7 +335,15 @@ function renderSummary() {
   const tt  = state.courses.reduce((a,c)=>a+c.tasks.length,0);
   const dt  = state.courses.reduce((a,c)=>a+c.tasks.filter(t=>t.done).length,0);
   const ud  = countUnavailableDays();
+  const { full, partial } = countUnavailableBreakdown();
   const pct = tt ? Math.round(dt/tt*100) : 0;
+  const udSubtitle = full && partial
+    ? `<p class="text-xs text-gray-500 mt-0.5">${full} מלא · ${partial} עומס</p>`
+    : full
+      ? `<p class="text-xs text-gray-500 mt-0.5">${full} ימים מלאים</p>`
+      : partial
+        ? `<p class="text-xs text-gray-500 mt-0.5">${partial} ימי עומס (×0.5)</p>`
+        : '';
   document.getElementById('summaryCards').innerHTML = `
     <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
       <p class="text-2xl font-bold text-blue-400">${tp}</p>
@@ -334,7 +355,8 @@ function renderSummary() {
     </div>
     <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
       <p class="text-2xl font-bold text-orange-400">${ud}</p>
-      <p class="text-xs text-gray-400 mt-1">ימי חוסר זמינות</p>
+      <p class="text-xs text-gray-400 mt-1">ימי חוסר זמינות נטו</p>
+      ${udSubtitle}
     </div>
     <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
       <p class="text-2xl font-bold text-purple-400">${dt}/${tt}</p>
@@ -348,21 +370,45 @@ function renderMiluim() {
     el.innerHTML = '<p class="text-xs text-gray-500">לא הוזנו תקופות חוסר זמינות</p>';
     return;
   }
+  const today = new Date().toISOString().slice(0,10);
   el.innerHTML = state.miluim.map(p => {
     const days        = daysBetween(p.start, p.end) + 1;
     const isPartial   = p.periodType === 'partial';
-    const gcalBadge   = p.fromGcal   ? `<span class="badge-gcal text-white text-xs px-1.5 py-0.5 rounded-full">📅</span>` : '';
+    const gcalBadge   = p.fromGcal ? `<span class="badge-gcal text-white text-xs px-1.5 py-0.5 rounded-full">📅</span>` : '';
     const typeBadge   = isPartial
       ? `<span class="text-xs px-1.5 py-0.5 rounded-full font-medium" style="background:#ea580c;color:#fff;">⚠️ עומס 50%</span>`
       : '';
     const rowBg       = isPartial ? 'bg-orange-950/40 border border-orange-800/50' : 'bg-gray-800';
+
+    // countdown to start
+    const daysToStart = Math.round((new Date(p.start) - new Date(today)) / 86400000);
+    const isActive    = today >= p.start && today <= p.end;
+    let timerText, timerColor;
+    if (today > p.end) {
+      timerText = 'הסתיים'; timerColor = 'text-gray-500';
+    } else if (isActive) {
+      const remaining = Math.round((new Date(p.end) - new Date(today)) / 86400000);
+      timerText = remaining === 0 ? '🔴 מסתיים היום' : `🔴 פעיל — עוד ${remaining} ימים`;
+      timerColor = 'text-red-400 font-semibold';
+    } else if (daysToStart <= 3) {
+      timerText = daysToStart === 1 ? '🟠 מחר!' : `🟠 עוד ${daysToStart} ימים`;
+      timerColor = 'text-orange-400 font-semibold';
+    } else if (daysToStart <= 14) {
+      timerText = `עוד ${daysToStart} ימים`;
+      timerColor = 'text-yellow-400';
+    } else {
+      timerText = `עוד ${daysToStart} ימים`;
+      timerColor = 'text-gray-400';
+    }
+
     return `<div class="flex items-center justify-between ${rowBg} rounded-lg px-3 py-2 text-sm gap-2">
-      <div class="flex flex-col min-w-0">
+      <div class="flex flex-col min-w-0 gap-0.5">
         <div class="flex items-center gap-1.5 flex-wrap">
           ${gcalBadge}${typeBadge}
           ${p.label ? `<span class="text-gray-200 text-xs font-medium truncate">${escHtml(p.label)}</span>` : ''}
         </div>
         <span class="text-orange-300 font-medium text-xs">${p.start} → ${p.end}</span>
+        <span class="text-xs ${timerColor}">${timerText}</span>
       </div>
       <div class="flex items-center gap-2 shrink-0">
         <span class="text-xs text-gray-400">${days} ימים</span>
